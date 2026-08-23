@@ -56,8 +56,8 @@ class _CompiledGroup:
             branches.append(f"(?P<{branch}>{body})")
             self.branch_to_template[branch] = template
             self.slot_names[branch] = [
-                (f"g{index}_{slot.key}", slot.key, slot.entity != TEXT)
-                for slot in template.slots
+                (f"g{index}_s{slot_index}", slot.key, slot.entity != TEXT)
+                for slot_index, slot in enumerate(template.slots)
             ]
         self.pattern = re.compile("|".join(branches), re.UNICODE)
 
@@ -77,7 +77,9 @@ class _CompiledGroup:
         return None
 
 
-_GROUP_DEF = re.compile(r"\(\?P<([A-Za-z_][A-Za-z0-9_]*)>")
+# Template slots are numbered, e.g. (?P<s0>...); we prefix with the branch index
+# so alternation branches do not reuse the same group name.
+_BRANCH_SLOT = re.compile(r"\(\?P<s(\d+)>")
 # Tokenization spaces punctuation out; typed values read better glued back
 # together ("* * * 815" -> "***815", "ر . س" -> "ر.س").
 _LOOSE_PUNCT = re.compile(r"\s*([.,:/*#])\s*")
@@ -88,7 +90,7 @@ def _tidy(value: str) -> str:
 
 
 def _prefix_groups(pattern: str, index: int) -> str:
-    return _GROUP_DEF.sub(lambda m: f"(?P<g{index}_{m.group(1)}>", pattern)
+    return _BRANCH_SLOT.sub(lambda m: f"(?P<g{index}_s{m.group(1)}>", pattern)
 
 
 class TemplateMatcher:

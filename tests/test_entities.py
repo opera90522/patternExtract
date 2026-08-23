@@ -1,5 +1,7 @@
-from patgen.entities import AMOUNT, CARD, CURRENCY, DATE, NUM, mask_tokens, name_slot
+from patgen.entities import AMOUNT, CARD, CURRENCY, DATE, NUM, mask_tokens
 from patgen.learn import prepare
+from patgen.naming import SlotNamer
+from patgen.template import Literal, Slot, Template
 from patgen.tokenizer import tokenize
 
 
@@ -33,9 +35,39 @@ def test_otp_digits_stay_numeric():
 
 
 def test_slot_naming_uses_context():
-    assert name_slot(AMOUNT, ["available", "balance"], []) == "balance"
-    assert name_slot(NUM, ["your", "otp", "is"], []) == "otp"
-    assert name_slot(AMOUNT, ["fee"], []) == "fee"
+    templates = [
+        Template(
+            "t1",
+            [
+                Literal("available"),
+                Literal("balance"),
+                Slot("", AMOUNT, 1, 1),
+            ],
+            count=5,
+        ),
+        Template(
+            "t2",
+            [
+                Literal("your"),
+                Literal("otp"),
+                Literal("is"),
+                Slot("", NUM, 1, 1),
+            ],
+            count=5,
+        ),
+        Template(
+            "t3",
+            [
+                Literal("fee"),
+                Slot("", AMOUNT, 1, 1),
+            ],
+            count=5,
+        ),
+    ]
+    SlotNamer.fit(templates).assign_all(templates)
+    assert templates[0].slots[0].key == "balance"
+    assert templates[1].slots[0].key == "otp"
+    assert templates[2].slots[0].key == "fee"
 
 
 def test_prepare_masks_after_normalization():

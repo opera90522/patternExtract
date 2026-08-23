@@ -10,6 +10,8 @@ from collections.abc import Sequence
 
 from .io_csv import read_texts
 from .learn import LearnConfig, TemplateLearner
+from .lexicon import available as lexicon_names
+from .lexicon import load as load_lexicon
 from .matcher import TemplateMatcher
 from .report import coverage_report, render_library
 from .template import TemplateLibrary
@@ -20,10 +22,14 @@ def _learn(args: argparse.Namespace) -> int:
     if not texts:
         print("no rows read", file=sys.stderr)
         return 1
+    lex = None
+    if args.lexicon:
+        lex = load_lexicon(args.lexicon)
     config = LearnConfig(
         sim_threshold=args.sim,
         depth=args.depth,
         min_support=args.min_support,
+        lexicon=lex,
     )
     started = time.perf_counter()
     library = TemplateLearner(config).fit(texts)
@@ -101,6 +107,11 @@ def build_parser() -> argparse.ArgumentParser:
     learn.add_argument("--min-support", type=int, default=1)
     learn.add_argument("--limit", type=int)
     learn.add_argument("--report", help="write a markdown report here")
+    learn.add_argument(
+        "--lexicon",
+        metavar="PATH_OR_NAME",
+        help=f"optional slot lexicon file or bundled name ({', '.join(lexicon_names())})",
+    )
     learn.set_defaults(func=_learn)
 
     match = sub.add_parser("match", help="match messages against a template library")

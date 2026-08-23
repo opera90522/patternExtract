@@ -2,6 +2,8 @@
 
 from .drain import DrainTree
 from .learn import LearnConfig, TemplateLearner, learn_templates, prepare
+from .lexicon import available as list_lexicons
+from .lexicon import load as load_lexicon
 from .matcher import MatchResult, TemplateMatcher
 from .normalize import NormalizeConfig, normalize, repair_mojibake
 from .template import Literal, Slot, Template, TemplateLibrary
@@ -19,6 +21,8 @@ __all__ = [
     "TemplateLibrary",
     "TemplateMatcher",
     "learn_templates",
+    "list_lexicons",
+    "load_lexicon",
     "normalize",
     "prepare",
     "repair_mojibake",
