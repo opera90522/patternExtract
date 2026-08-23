@@ -1,7 +1,11 @@
-"""Generate a messy bilingual SMS CSV for demos, tests and benchmarks.
+"""Generate a messy bilingual multi-domain SMS CSV for demos and benchmarks.
 
 The generator injects the failure modes real exports have: mojibake, bidi
 marks, Arabic-Indic digits, tashkeel, double spaces and truncated tails.
+
+Finance templates coexist with e-commerce shipping, travel, support, 2FA and
+log alerts to prove the learner is domain-agnostic and only uses the words
+that already appear in the messages.
 """
 
 from __future__ import annotations
@@ -11,14 +15,32 @@ import csv
 import random
 from datetime import datetime, timedelta
 
-BANKS = ["alrajhi", "snb", "riyad bank", "الراجحي", "الأهلي", "بنك الرياض"]
+SENDERS = [
+    "alrajhi", "snb", "riyad bank", "الراجحي", "الأهلي", "بنك الرياض",
+    "noon", "amazon.sa", "saudia", "flynas", "support", "nocs",
+]
 MERCHANTS = [
     "amazon.sa", "jarir bookstore", "starbucks", "carrefour hyper",
     "نون", "هنقرستيشن", "بنده", "صيدلية النهدي",
 ]
 CURRENCIES = ["SAR", "AED", "USD", "ر.س"]
 
+FLIGHTS = ["SV102", "EK413", "XY201", "TK123", "QR890"]
+CITIES = ["riyadh", "jeddah", "dubai", "cairo", "dammam", "الرياض", "جده"]
+HOSTS = ["srv-prod-07", "api-01", "db-master", "worker-03"]
+LOCATIONS = ["clinic a", "tower 2", "gate 5", "branch 12", "عيادة الأمل"]
+URLS = [
+    "https://track.example.com/abc123",
+    "https://support.example.com/ticket/xyz",
+    "https://noon.com/orders",
+]
+STATUSES = ["confirmed", "delayed", "cancelled", "shipped", "delivered"]
+AGENTS = ["ahmed k.", "sara m.", "خالد العتيبي"]
+NAMES = ["mohammed ali", "sara a.", "خالد العتيبي", "نورة الشمري", "acme trading llc"]
+SERVICES = ["sms alerts", "apple pay", "الحوالات الفورية", "المدفوعات الدولية"]
+
 TEMPLATES = [
+    # finance
     "Purchase of {cur} {amount} at {merchant} on card ending {card} on {date} {time}. Available balance {cur} {balance}",
     "Transfer of {cur} {amount} to {name} completed. Ref {ref}. Balance {cur} {balance}",
     "Your OTP is {otp}. Valid for {mins} minutes. Do not share it with anyone",
@@ -34,10 +56,16 @@ TEMPLATES = [
     "خصم رسوم {fee} {cur} على الحساب {acct} رقم العملية {ref}",
     "عزيزنا العميل تم تفعيل خدمة {service} على حسابك {acct} للاستفسار اتصل على {phone}",
     "Dear customer, service {service} was activated on account {acct}. Call {phone} for help",
+    # e-commerce / travel / support / logs (multi-domain)
+    "Your order {ref} has been {status}. Track at {url} Estimated delivery {date}",
+    "Booking {ref} confirmed. Flight {flight} from {origin} to {destination} on {date} at {time}. Passenger {name}",
+    "Ticket {ref} updated. Agent {agent} replied: {text}",
+    "Your verification code is {otp}. Login from ip {ip} at {time}",
+    "ALERT host {host} cpu {percent}% at {time} service {service} status {status}",
+    "Appointment reminder for {name} at {time} on {date}. Location {location}",
+    "تم تأكيد حجزك {ref} رحلة {flight} من {origin} الى {destination} بتاريخ {date} الساعه {time}",
+    "طلبيتك {ref} في الطريق الى {location} التوصيل المتوقع {date}",
 ]
-
-NAMES = ["mohammed ali", "sara a.", "خالد العتيبي", "نورة الشمري", "acme trading llc"]
-SERVICES = ["sms alerts", "apple pay", "الحوالات الفورية", "المدفوعات الدولية"]
 
 
 def _mojibake(text: str) -> str:
@@ -60,10 +88,14 @@ def _mess(text: str, rng: random.Random) -> str:
     if rng.random() < 0.1:
         text = "\u200f" + text + "\u200e"
     if rng.random() < 0.07:
-        text = text + " " + rng.choice(["شكرا لك", "thank you", "-" + rng.choice(BANKS)])
+        text = text + " " + rng.choice(["شكرا لك", "thank you", "-" + rng.choice(SENDERS)])
     if rng.random() < 0.05:
         text = text[: int(len(text) * 0.8)]
     return text
+
+
+def _pick(rng: random.Random, items: list[str]) -> str:
+    return rng.choice(items)
 
 
 def generate(count: int, seed: int = 7) -> list[dict]:
@@ -89,11 +121,27 @@ def generate(count: int, seed: int = 7) -> list[dict]:
             name=rng.choice(NAMES),
             service=rng.choice(SERVICES),
             phone=f"9665{rng.randint(10**7, 10**8 - 1)}",
+            flight=rng.choice(FLIGHTS),
+            origin=rng.choice(CITIES),
+            destination=rng.choice(CITIES),
+            host=rng.choice(HOSTS),
+            location=rng.choice(LOCATIONS),
+            url=rng.choice(URLS),
+            status=rng.choice(STATUSES),
+            agent=rng.choice(AGENTS),
+            percent=str(rng.randint(1, 99)),
+            ip=f"10.{rng.randint(0,255)}.{rng.randint(0,255)}.{rng.randint(1,254)}",
+            text=rng.choice([
+                "we are looking into it",
+                "please try again now",
+                "issue resolved on our end",
+                "شكرا على تواصلك معنا",
+            ]),
         )
         rows.append(
             {
                 "id": i,
-                "sender": rng.choice(BANKS),
+                "sender": rng.choice(SENDERS),
                 "received_at": when.isoformat(),
                 "text": _mess(text, rng),
             }

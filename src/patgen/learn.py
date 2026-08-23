@@ -18,13 +18,14 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 
 from .drain import WILDCARD, Cluster, DrainTree, align_wildcards
-from .entities import TEXT, mask_tokens, name_slot
+from .entities import TEXT, mask_tokens
+from .lexicon import load, normalize_lexicon
+from .naming import SlotNamer
 from .normalize import DEFAULT_CONFIG, NormalizeConfig, normalize
 from .template import Literal, Part, Slot, Template, TemplateLibrary, enum_values
 from .tokenizer import tokenize
 
 _ENTITY_KEY = re.compile(r"^<([A-Z]+)>$")
-_IDENT = re.compile(r"[^0-9a-z_]")
 DEFAULT_TEXT_SLOT_WIDTH = 6
 
 
@@ -42,6 +43,13 @@ class LearnConfig:
     #: of a whole cluster.
     refine_ratio: float = 0.5
     normalize_config: NormalizeConfig = field(default=DEFAULT_CONFIG)
+    lexicon: str | dict[str, str] | None = None
+
+    def __post_init__(self) -> None:
+        if isinstance(self.lexicon, str):
+            self.lexicon = load(self.lexicon)
+        if isinstance(self.lexicon, dict):
+            self.lexicon = normalize_lexicon(self.lexicon)
 
 
 @dataclass
@@ -106,6 +114,7 @@ class TemplateLearner:
             if template is not None:
                 templates.append(template)
         templates = _absorb_specializations(_deduplicate(templates))
+        SlotNamer.fit(templates, lexicon=self.config.lexicon).assign_all(templates)
         self._profile_slots(templates)
         templates.sort(key=lambda t: (-t.count, t.template_id))
         return TemplateLibrary(
@@ -201,7 +210,6 @@ class TemplateLearner:
         if self.config.drop_degenerate and _is_degenerate(parts, cluster.count):
             return None
 
-        _assign_slot_keys(parts)
         template = Template(
             template_id=f"t{cluster.cluster_id:05d}",
             parts=parts,
@@ -318,10 +326,14 @@ def _refine_wildcard(counter: Counter, ratio: float) -> tuple[list[str], bool]:
     shortest_head = min((len(f) for f in heads if f), default=0)
     while prefix and len(prefix) >= shortest_head:
         prefix.pop()
-    if not prefix and not suffix:
-        return [WILDCARD], bool(empty)
     fixed = len(prefix) + len(suffix)
     can_be_empty = bool(empty) or any(len(f) <= fixed for f in counter)
+    if can_be_empty:
+        # If a clause is optional, do not freeze its affixes as required text;
+        # keeping the wildcard optional preserves coverage for the empty case.
+        return [WILDCARD], can_be_empty
+    if not prefix and not suffix:
+        return [WILDCARD], can_be_empty
     return prefix + [WILDCARD] + suffix, can_be_empty
 
 
@@ -389,22 +401,6 @@ def _is_degenerate(parts: Sequence[Part], count: int) -> bool:
     if alnum_literals == 0:
         return True
     return literals < 2 and count <= 1
-
-
-def _assign_slot_keys(parts: list[Part]) -> None:
-    used: Counter = Counter()
-    literals = [p.text if isinstance(p, Literal) else "" for p in parts]
-    for i, part in enumerate(parts):
-        if not isinstance(part, Slot):
-            continue
-        left = [t for t in literals[max(0, i - 5) : i] if t]
-        right = [t for t in literals[i + 1 : i + 4] if t]
-        name = name_slot(part.entity, left, right) or part.entity.lower()
-        name = _IDENT.sub("_", name.lower()) or "slot"
-        if name[0].isdigit():
-            name = f"s_{name}"
-        used[name] += 1
-        part.key = name if used[name] == 1 else f"{name}_{used[name]}"
 
 
 def _deduplicate(templates: Sequence[Template]) -> list[Template]:

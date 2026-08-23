@@ -12,10 +12,13 @@ license = { text = "MIT" }
 dependencies = []
 
 [project.optional-dependencies]
-dev = ["pytest>=7", "ruff>=0.5"]
+dev = ["pytest>=7", "ruff>=0.5", "jupyter>=1.1", "nbformat>=5.10"]
 
 [project.scripts]
 patgen = "patgen.cli:main"
+
+[tool.setuptools.package-data]
+"*" = ["*.json"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

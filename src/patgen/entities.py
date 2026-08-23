@@ -20,6 +20,11 @@ from dataclasses import dataclass
 from .tokenizer import Token
 
 # ---------------------------------------------------------------------------
+# slot naming was here; it is now corpus-driven in .naming and optional
+# via .lexicon. This module only does token-level entity masking.
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
 # entity vocabulary
 # ---------------------------------------------------------------------------
 
@@ -75,33 +80,6 @@ _REF_CONTEXT = frozenset(
     "ref reference trx txn id no مرجع رقم العمليه العملية".split()
 )
 _PHONE_CONTEXT = frozenset("call mobile phone tel اتصل جوال هاتف".split())
-
-#: Keywords that name the slot that follows (or precedes) them. Used to turn
-#: ``<AMOUNT>`` into ``<AMOUNT:balance>`` so downstream consumers get semantics,
-#: not just types.
-SLOT_KEYWORDS = {
-    "amount": ("amount", "amt", "purchase", "payment", "transfer", "شراء", "مبلغ", "دفع", "تحويل", "سحب", "خصم", "ايداع"),
-    "balance": ("balance", "bal", "avbl", "available", "رصيد", "المتاح", "المتبقي"),
-    "fee": ("fee", "fees", "charge", "vat", "رسوم", "ضريبه", "عموله"),
-    "limit": ("limit", "الحد"),
-    "card": ("card", "بطاقه", "البطاقه"),
-    "account": ("account", "acct", "acc", "iban", "حساب", "الحساب", "ايبان"),
-    "merchant": ("at", "from", "merchant", "لدي", "من", "في"),
-    "date": ("on", "date", "بتاريخ", "تاريخ"),
-    "time": ("at", "time", "الساعه", "وقت"),
-    "otp": ("otp", "code", "password", "pin", "verification", "رمز", "كلمه", "التحقق"),
-    "ref": ("ref", "reference", "trx", "txn", "id", "مرجع", "رقم"),
-    "phone": ("mobile", "phone", "جوال", "هاتف"),
-    "beneficiary": ("to", "beneficiary", "الي", "لصالح", "المستفيد"),
-    "service": ("service", "خدمه", "خدمة"),
-}
-
-#: A keyword can hint at several slots ("at" is both merchant and time), so
-#: candidates are kept in declaration order and filtered by entity type.
-_KEYWORD_TO_SLOTS: dict[str, tuple[str, ...]] = {}
-for _slot, _words in SLOT_KEYWORDS.items():
-    for _word in _words:
-        _KEYWORD_TO_SLOTS[_word] = (*_KEYWORD_TO_SLOTS.get(_word, ()), _slot)
 
 
 def _currency_regex() -> str:
@@ -263,39 +241,5 @@ def mask_tokens(tokens: Sequence[Token]) -> list[MaskedToken]:
     return out
 
 
-def name_slot(entity: str, left_context: Sequence[str], right_context: Sequence[str]) -> str | None:
-    """Infer a business name for a slot from the literals around it."""
-    if entity == CURRENCY:
-        return "currency"
-    # Words on the left qualify the slot ("available balance <AMOUNT>"); on the
-    # right only the adjacent word does, anything further belongs to the next
-    # field and would steal its name.
-    for word in [*reversed(list(left_context)), *list(right_context)[:1]]:
-        for candidate in _KEYWORD_TO_SLOTS.get(word, ()):
-            slot = _refine(entity, candidate)
-            if slot:
-                return slot
-    return None
-
-
-def _refine(entity: str, slot: str) -> str | None:
-    """Reject keyword hits that make no sense for the entity type."""
-    compatible = {
-        AMOUNT: {"amount", "balance", "fee", "limit"},
-        NUM: {"otp", "ref", "amount", "balance", "account", "card"},
-        CODE: {"otp", "ref"},
-        REF: {"ref", "otp", "account", "card"},
-        CARD: {"card", "account"},
-        ACCOUNT: {"account", "card"},
-        IBAN: {"account"},
-        DATE: {"date"},
-        TIME: {"time"},
-        DATETIME: {"date", "time"},
-        PHONE: {"phone"},
-        TEXT: {"merchant", "beneficiary", "account", "card", "service"},
-        PERCENT: {"fee", "limit"},
-        CURRENCY: {"amount", "balance", "fee"},
-    }.get(entity)
-    if compatible is None or slot in compatible:
-        return slot
-    return None
+# Slot naming is now handled by patgen.naming, which derives names from the
+# corpus and optional user lexicon rather than a fixed domain vocabulary.

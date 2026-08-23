@@ -14,7 +14,10 @@ OTP = [f"Your OTP is {100000 + i}. Do not share it with anyone" for i in range(1
 
 
 def build():
-    return learn_templates(ENGLISH + ARABIC + OTP, LearnConfig(min_support=2))
+    return learn_templates(
+        ENGLISH + ARABIC + OTP,
+        LearnConfig(min_support=2, lexicon="finance"),
+    )
 
 
 def test_learns_one_template_per_family():

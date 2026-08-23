@@ -49,8 +49,8 @@ class Slot:
                 return rf"\S+(?: \S+){{0,{self.max_tokens - 1}}}"
         return base
 
-    def to_regex(self) -> str:
-        return f"(?P<{self.key}>{self.value_regex()})"
+    def to_regex(self, group: str | None = None) -> str:
+        return f"(?P<{group or self.key}>{self.value_regex()})"
 
 
 Part = Literal | Slot
@@ -114,7 +114,9 @@ class Template:
 
         Separators are ``\\s*`` around punctuation-only literals so that
         ``100.00 sar`` and ``100.00sar`` land on the same template.
+        Slot groups are numbered so keys can be any unicode string.
         """
+        slot_index = 0
         chunks: list[str] = []
         for i, part in enumerate(self.parts):
             separator = (
@@ -122,10 +124,15 @@ class Template:
                 if i == 0
                 else (r"\s*" if _optional_space(self.parts[i - 1], part) else r"\s+")
             )
-            if isinstance(part, Slot) and part.optional:
-                # The separator lives inside the optional group, otherwise a
-                # message without the trailing clause keeps a dangling space.
-                chunks.append(f"(?:{separator}{part.to_regex()})?")
+            if isinstance(part, Slot):
+                body = part.to_regex(group=f"s{slot_index}")
+                slot_index += 1
+                if part.optional:
+                    # The separator lives inside the optional group, otherwise a
+                    # message without the trailing clause keeps a dangling space.
+                    chunks.append(f"(?:{separator}{body})?")
+                else:
+                    chunks.append(separator + body)
             else:
                 chunks.append(separator + part.to_regex())
         return "".join(chunks)

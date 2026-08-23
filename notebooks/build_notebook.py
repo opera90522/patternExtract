@@ -15,9 +15,10 @@ CELLS: list[tuple[str, str]] = [
         "md",
         """# patgen — mining templates from messy bilingual SMS
 
-This notebook walks the whole approach on a synthetic corpus that mimics real
-banking traffic: Arabic + English, Arabic-Indic digits, tashkeel, bidi marks,
-cp1252 mojibake in the middle of otherwise clean text, and truncated tails.
+This notebook walks the whole approach on a synthetic corpus that mixes
+finance, e-commerce shipping, travel bookings, support, 2FA and log alerts:
+Arabic + English, Arabic-Indic digits, tashkeel, bidi marks, cp1252 mojibake
+in the middle of otherwise clean text, and truncated tails.
 
 1. the data and what is wrong with it
 2. normalization + mojibake repair
@@ -163,7 +164,10 @@ counts.most_common(15)""",
 for m in random.sample(messages, 5):
     r = matcher.match(m)
     print(m)
-    print("   ->", r.template_id, r.entities if r else None, "\\n")""",
+    if r is None:
+        print("   -> no match\\n")
+    else:
+        print("   ->", r.template_id, r.entities, "\\n")""",
     ),
     (
         "code",
