@@ -1,0 +1,125 @@
+# patgen — SMS pattern generalizer
+
+Mine reusable **templates** out of unstructured SMS text (CSV in), then match
+production traffic against them at ~10k messages/sec on one core, returning the
+template id plus **typed, business named entities** (`amount`, `balance`, `fee`,
+`account`, `card`, `otp`, `ref`, `merchant`, `beneficiary`, `date`, ...).
+
+Built for messy bilingual banking traffic: Arabic and English in the same
+corpus, Arabic-Indic digits, tashkeel, bidi marks, and cp1252 mojibake
+(`Ø±.Ø³`) sitting in the middle of otherwise clean text.
+
+```
+Purchase of ر.س 4,467.79 at starbucks on card ending ****5744 on 29/07/2024 02:48. Available balance ر.س 110,579.86
+
+  ->  t00011   purchase of <CURRENCY:currency> <AMOUNT:amount> at <TEXT:merchant> on card
+               ending <CARD:card> on <DATETIME:date> . available balance
+               <CURRENCY:currency_2> <AMOUNT:balance>
+
+  ->  {"currency": "ر.س", "amount": "4,467.79", "merchant": "starbucks",
+       "card": "****5744", "date": "29/07/2024 02:48", "balance": "110,579.86"}
+```
+
+## Install
+
+```bash
+python -m venv .venv && . .venv/bin/activate
+pip install -e ".[dev]"          # no runtime dependencies, stdlib only
+```
+
+## Quickstart
+
+```bash
+# 0. optional: build a 5k message synthetic bilingual corpus
+python examples/generate_synthetic.py examples/sms_sample.csv
+
+# 1. learning phase: CSV -> template library (JSON)
+patgen learn examples/sms_sample.csv -o model.json --report report.md
+# 5000 messages -> 74 templates in 0.63s (coverage 95.0%)
+
+# 2. look at what was learned
+patgen inspect -m model.json
+
+# 3. production phase: stream messages -> JSONL of template + entities
+patgen match new_traffic.csv -m model.json -o out.jsonl
+
+# 4. throughput check
+patgen bench examples/sms_sample.csv -m model.json --repeat 3
+# 15000 messages in 1.47s = 10,170 msg/s (95.0% matched)
+```
+
+The text column is auto-detected (`text`, `message`, `body`, `sms`, `نص`, ...,
+else the longest column); override with `-c/--column`. Inputs accept several
+files or globs, and each file is decoded with the first codec that works
+(`utf-8-sig`, `utf-8`, `cp1256`, `cp1252`, `latin-1`).
+
+## Library use
+
+```python
+from patgen import TemplateLibrary, TemplateMatcher, learn_templates
+
+library = learn_templates(messages)      # learning, offline
+library.save("model.json")
+
+matcher = TemplateMatcher(TemplateLibrary.load("model.json"))   # serving
+result = matcher.match(sms)              # None when nothing matches
+result.template_id, result.label, result.entities
+```
+
+`TemplateMatcher` compiles everything once in `__init__`; `match()` allocates
+almost nothing, so it is safe to keep one instance per worker process.
+
+## How it works
+
+### Learning (offline, two passes)
+
+1. **Normalize** (`normalize.py`) — repair mojibake *per suspicious run*, so a
+   message that is only partly corrupted is still recovered; drop residue that
+   cannot be decoded back; NFKC; strip bidi/control chars, tashkeel and tatweel;
+   Arabic-Indic → ASCII digits; fold `أإآ→ا`, `ة→ه`, `ى→ي`, `ک→ك`; lowercase.
+2. **Tokenize** (`tokenizer.py`) — URLs, emails, numbers, Latin words, Arabic
+   words, punctuation as separate anchors so `100.00sar` and `100.00 sar`
+   generalize alike.
+3. **Mask entities** (`entities.py`) — values become typed placeholders
+   (`<AMOUNT>`, `<CARD>`, `<DATE>`, `<PHONE>`, `<IBAN>`, `<URL>`, ...) *before*
+   clustering. This is what stops the cluster explosion that Drain alone
+   suffers from on financial traffic.
+4. **Cluster** (`drain.py`) — Drain-style fixed depth tree (length bucket →
+   prefix tokens → leaf), similarity threshold, bounded fan-out, plus a
+   controlled *length drift* merge that collapses a differing region into `<*>`
+   instead of forking a near-duplicate cluster.
+5. **Refine** (`learn.py`) — Drain widens a template as soon as one odd message
+   arrives (a truncated tail, an extra clause), and everything the wildcard
+   swallows stops being extractable. Every wildcard is therefore replayed
+   against the messages that filled it: a dominant filling — or a dominant
+   prefix/suffix around the part that really varies — is spliced back in and
+   marked optional when some messages left it empty.
+6. **Name slots** — keywords around a placeholder turn `<AMOUNT>` into
+   `<AMOUNT:balance>` vs `<AMOUNT:fee>`, `<NUM>` into `<NUM:otp>` vs `<NUM:ref>`.
+7. **Profile** — every template is replayed to record slot cardinality,
+   examples, and small closed vocabularies (rendered as enums in the regex).
+
+### Serving (online)
+
+Templates are compiled to regexes over canonical text, bucketed by their first
+literal token, and each bucket is compiled into a few alternation regexes with
+named groups — so a message is tested against the handful of templates that can
+possibly match it, inside the C regex engine, most specific first.
+
+## Tuning
+
+| flag | meaning |
+| --- | --- |
+| `--sim` | Drain similarity threshold (higher = more, tighter templates) |
+| `--depth` | prefix depth of the tree |
+| `--min-support` | drop templates seen fewer than N times |
+| `--limit` | learn from the first N rows only |
+
+Unmatched traffic is the signal to retrain: `--report` lists coverage and
+sample misses, and `patgen match` emits `null` per unmatched message.
+
+## Tests
+
+```bash
+pytest -q && ruff check .
+```
