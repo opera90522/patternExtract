@@ -1,0 +1,23 @@
+{
+  "name": "patgen offline notebook",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "postCreateCommand": "python -c \"import patgen; print('patgen', patgen.__version__)\"",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-toolsai.jupyter",
+        "ms-python.python"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python"
+      }
+    }
+  },
+  "forwardPorts": [8888],
+  "remoteUser": "root",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/patternExtract,type=bind,consistency=cached",
+  "workspaceFolder": "/workspaces/patternExtract"
+}

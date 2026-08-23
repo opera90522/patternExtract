@@ -60,7 +60,7 @@ ENTITY_REGEX = {
     PERCENT: r"\d+(?:\.\d+)? ?%",
     CURRENCY: "",  # filled below from the currency lexicon
     CODE: r"[a-z0-9]{4,10}",
-    REF: r"[a-z0-9][a-z0-9-]{3,}",
+    REF: r"[a-z0-9][a-z0-9.-]{3,}",
     NUM: r"\d+",
     TEXT: r"\S+",
 }
@@ -105,7 +105,7 @@ _RE_DATE = re.compile(r"^\d{1,4}[-/.]\d{1,2}[-/.]\d{1,4}$")
 _RE_TIME = re.compile(r"^\d{1,2}:\d{2}(:\d{2})?$")
 _RE_AMOUNT = re.compile(r"^\d[\d,]*\.\d{1,3}$|^\d{1,3}(,\d{3})+$")
 _RE_INT = re.compile(r"^\d+$")
-_RE_REF = re.compile(r"^(?=[a-z0-9-]*\d)(?=[a-z0-9-]*[a-z])[a-z0-9][a-z0-9-]{3,}$")
+_RE_REF = re.compile(r"^(?=[a-z0-9.-]*\d)(?=[a-z0-9.-]*[a-z])[a-z0-9][a-z0-9.-]{3,}$")
 _RE_MASKCHARS = re.compile(r"^[*x#]+$")
 
 
